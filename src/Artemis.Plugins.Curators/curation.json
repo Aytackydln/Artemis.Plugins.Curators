@@ -1,0 +1,12 @@
+﻿{
+  "Profiles": [
+    {
+      "WorkshopId": 19,
+      "ProfileTriggers": [
+        {
+          "ProcessName": "notepad++"
+        }
+      ]
+    }
+  ]
+}

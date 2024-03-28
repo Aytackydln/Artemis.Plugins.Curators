@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>net8.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
         <Platforms>x64</Platforms>
         <EnableDynamicLoading>true</EnableDynamicLoading>
         <Nullable>enable</Nullable>
@@ -8,13 +9,21 @@
 
     <ItemGroup>
         <PackageReference Include="ArtemisRGB.UI.Shared" IncludeAssets="compile;build;buildTransitive" Version="1.2024.303.4" />
+        <PackageReference Include="StrawberryShake.Core" Version="13.9.0" />
     </ItemGroup>
 
     <ItemGroup>
         <Content Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+        <Content Include="curation.json" CopyToOutputDirectory="PreserveNewest" />
         <PackageReference Include="ArtemisRGB.Plugins.BuildTask" Version="2.0.0">
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
           <PrivateAssets>all</PrivateAssets>
         </PackageReference>
+    </ItemGroup>
+
+    <ItemGroup>
+      <Reference Include="Artemis.WebClient.Workshop">
+        <HintPath>H:\Rider\Artemis\src\Artemis.WebClient.Workshop\obj\x64\Debug\net8.0\Artemis.WebClient.Workshop.dll</HintPath>
+      </Reference>
     </ItemGroup>
 </Project>
