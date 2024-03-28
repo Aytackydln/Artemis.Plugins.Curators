@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Artemis.Core;
 using Artemis.Core.Modules;
 using Artemis.Core.Services;
@@ -13,6 +14,7 @@ using Artemis.WebClient.Workshop;
 using Artemis.WebClient.Workshop.Handlers.InstallationHandlers;
 using Artemis.WebClient.Workshop.Services;
 using JetBrains.Annotations;
+using Serilog;
 
 namespace Artemis.Plugins.Curators;
 
@@ -21,7 +23,8 @@ public class CuratorsModule(
     PluginSettings pluginSettings,
     ProfileEntryInstallationHandler profileInstaller,
     IWorkshopService workshopService,
-    IWorkshopClient client
+    IWorkshopClient client,
+    ILogger logger
 ) : Module
 {
     private readonly Dictionary<string, List<ProfileDetection>> _processProfiles = new();
@@ -37,40 +40,46 @@ public class CuratorsModule(
 
         //TODO read curation list from pluginSettings
         var json = File.ReadAllText("curation.json");
-        var curation = JsonSerializer.Deserialize(json, JsonSourceContext.Default.Curation);
+        var exampleCuration = JsonSerializer.Deserialize(json, JsonSourceContext.Default.Curation);
 
-        foreach (var profileDetection in EnumerateEntries(curation))
+        Curation[] curations = [exampleCuration];
+        foreach (var profileDetection in curations.SelectMany(EnumerateEntries))
         {
-            var entryDetails = profileDetection.Entry;
-            if (entryDetails.LatestRelease == null)
-            {
-                // entry doesn't have release
-                continue;
-            }
-
-            var installedEntry = workshopService.GetInstalledEntry(entryDetails.Id);
-            if (installedEntry != null)
-            {
-                var installedDate = installedEntry.InstalledAt;
-                var latestReleaseDate = entryDetails.LatestRelease.CreatedAt;
-                if (installedDate > latestReleaseDate)
-                {
-                    // no update needed
-                    continue;
-                }
-            }
-
-            var processName = profileDetection.ProcessName;
-            if (!_processProfiles.TryGetValue(processName, out var list))
-            {
-                list = new();
-                _processProfiles.Add(processName, list);
-            }
-
-            list.Add(profileDetection);
+            AddDetection(profileDetection);
         }
 
         ProcessMonitor.ProcessStarted += ProcessMonitorOnProcessStarted;
+    }
+
+    private void AddDetection(ProfileDetection profileDetection)
+    {
+        var entryDetails = profileDetection.Entry;
+        if (entryDetails.LatestRelease == null)
+        {
+            // entry doesn't have release
+            return;
+        }
+
+        var installedEntry = workshopService.GetInstalledEntry(entryDetails.Id);
+        if (installedEntry != null)
+        {
+            var installedDate = installedEntry.InstalledAt;
+            var latestReleaseDate = entryDetails.LatestRelease.CreatedAt;
+            if (installedDate > latestReleaseDate)
+            {
+                // no update needed
+                return;
+            }
+        }
+
+        var processName = profileDetection.ProcessName;
+        if (!_processProfiles.TryGetValue(processName, out var list))
+        {
+            list = new();
+            _processProfiles.Add(processName, list);
+        }
+
+        list.Add(profileDetection);
     }
 
     public override void Disable()
@@ -97,8 +106,7 @@ public class CuratorsModule(
         {
             foreach (var triggerData in curationProfile.ProfileTriggers)
             {
-                var getEntryOp = client.GetEntryById.ExecuteAsync(curationProfile.WorkshopId, _cancellationTokenSource.Token).Result;
-                var entry = getEntryOp.Data?.Entry;
+                var entry = FetchEntry(curationProfile.WorkshopId).Result;
 
                 if (entry == null)
                 {
@@ -113,16 +121,33 @@ public class CuratorsModule(
         }
     }
 
+    private async Task<IEntryDetails?> FetchEntry(long entryId)
+    {
+        try
+        {
+            var getEntryOp = await client.GetEntryById.ExecuteAsync(entryId, _cancellationTokenSource.Token);
+            return getEntryOp.Data?.Entry;
+        }
+        catch (Exception e)
+        {
+            logger.Error(e, "[CuratorModule] Could not fetch profile entry: {Id}", entryId);
+        }
+
+        return null;
+    }
+
     private async void ProcessMonitorOnProcessStarted(object? sender, ProcessEventArgs e)
     {
         if (!_processProfiles.TryGetValue(e.ProcessInfo.ProcessName, out var profiles))
         {
+            // process name doesn't match any
             return;
         }
 
         var profileDetection = profiles.FirstOrDefault(x => x.DetectionFunc(e.ProcessInfo.ProcessName));
         if (profileDetection == null)
         {
+            // process name is correct but other checks failed
             return;
         }
 
