@@ -17,13 +17,18 @@ using JetBrains.Annotations;
 namespace Artemis.Plugins.Curators;
 
 [PublicAPI]
-public class CuratorsModule(PluginSettings pluginSettings, ProfileEntryInstallationHandler profileInstaller, IWorkshopService workshopService, IWorkshopClient client) : Module
+public class CuratorsModule(
+    PluginSettings pluginSettings,
+    ProfileEntryInstallationHandler profileInstaller,
+    IWorkshopService workshopService,
+    IWorkshopClient client
+) : Module
 {
     private readonly Dictionary<string, List<ProfileDetection>> _processProfiles = new();
     private CancellationTokenSource _cancellationTokenSource = new();
 
     public override List<IModuleActivationRequirement>? ActivationRequirements => null;
-    
+
     public override void Enable()
     {
         _cancellationTokenSource.Cancel();
@@ -71,7 +76,7 @@ public class CuratorsModule(PluginSettings pluginSettings, ProfileEntryInstallat
     public override void Disable()
     {
         ProcessMonitor.ProcessStarted -= ProcessMonitorOnProcessStarted;
-        
+
         _cancellationTokenSource.Cancel();
         _cancellationTokenSource.Dispose();
     }
@@ -87,6 +92,7 @@ public class CuratorsModule(PluginSettings pluginSettings, ProfileEntryInstallat
         {
             yield break;
         }
+
         foreach (var curationProfile in curation.Profiles)
         {
             foreach (var triggerData in curationProfile.ProfileTriggers)
@@ -115,12 +121,19 @@ public class CuratorsModule(PluginSettings pluginSettings, ProfileEntryInstallat
         }
 
         var profileDetection = profiles.FirstOrDefault(x => x.DetectionFunc(e.ProcessInfo.ProcessName));
-
-        var entry = profileDetection?.Entry;
-        if (entry?.LatestRelease == null)
+        if (profileDetection == null)
         {
             return;
         }
+
+        var entry = profileDetection.Entry;
+        if (entry.LatestRelease == null)
+        {
+            return;
+        }
+
         await profileInstaller.InstallAsync(entry, entry.LatestRelease, new Progress<StreamProgress>(), _cancellationTokenSource.Token);
+
+        profiles.Remove(profileDetection);
     }
 }
